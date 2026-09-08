@@ -1,7 +1,7 @@
 import {
-    createExperimentSession,
-    recordOutcomeMeasurement,
-    updateExperimentDecision,
+  createExperimentSession,
+  recordOutcomeMeasurement,
+  updateExperimentDecision,
 } from "./experiment-repository";
 
 import { generateSessionId } from "../utils/session-id";
@@ -23,6 +23,12 @@ export async function testExperimentRepository() {
     selectedAction: "reduce_brightness",
 
     userDecision: "pending",
+
+    condition: "intervention",
+
+    trialId: "test-trial",
+
+    system: "personalized",
   });
 
   console.log("Created experiment session:", sessionId);

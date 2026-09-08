@@ -1,5 +1,19 @@
+import type { BaselineSystem } from "../baselines/baseline-types";
+
+export type ExperimentCondition = "control" | "intervention";
+
+export type ExperimentDecision =
+  | "accepted"
+  | "rejected"
+  | "ignored"
+  | "pending";
+
 export type ExperimentSession = {
   sessionId: string;
+
+  trialId: string;
+
+  system: BaselineSystem;
 
   startedAt: string;
 
@@ -9,7 +23,9 @@ export type ExperimentSession = {
 
   selectedAction: string;
 
-  userDecision: "accepted" | "rejected" | "ignored" | "pending";
+  condition: ExperimentCondition;
+
+  userDecision: ExperimentDecision;
 
   completedAt?: string;
 };
@@ -18,6 +34,7 @@ export type InterventionOutcomeMeasurement = {
   sessionId: string;
 
   batteryLevelBefore: number;
+
   batteryLevelAfter?: number;
 
   energySaving?: number;

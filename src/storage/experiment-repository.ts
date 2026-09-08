@@ -1,8 +1,8 @@
 import { getDatabase } from "./database";
 
 import type {
-    ExperimentSession,
-    InterventionOutcomeMeasurement,
+  ExperimentSession,
+  InterventionOutcomeMeasurement,
 } from "../types/experiment";
 
 export async function createExperimentSession(
@@ -14,20 +14,26 @@ export async function createExperimentSession(
     `
     INSERT INTO experiment_sessions (
       session_id,
+      trial_id,
+      system,
       started_at,
       app_name,
       battery_level_at_start,
       selected_action,
+      condition,
       user_decision,
       completed_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     session.sessionId,
+    session.trialId,
+    session.system,
     session.startedAt,
     session.appName,
     session.batteryLevelAtStart,
     session.selectedAction,
+    session.condition,
     session.userDecision,
     session.completedAt ?? null,
   );
