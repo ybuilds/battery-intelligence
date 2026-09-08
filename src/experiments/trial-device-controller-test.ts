@@ -1,41 +1,51 @@
-import { TrialDeviceController } from "./trial-device-controller";
-
-import type { BaselineDecision } from "../baselines/baseline-types";
+import type { AppCategory } from "../types/behaviour";
 import type { ExperimentalTrial } from "../types/trial";
 
-export async function testTrialDeviceController(): Promise<void> {
-  const trial: ExperimentalTrial = {
-    trialId: "device-test-trial",
-    system: "personalized",
-    condition: "control",
-    appName: "Battery Intelligence Test",
-    startingBatteryLevel: 50,
-    targetDurationMinutes: 1,
-    status: "planned",
-    allocation: {
-      block: 1,
-      repetition: 1,
-      randomizedOrder: 1,
-    },
-  };
+import { generateOutcomeDataset } from "../intelligence/outcome-dataset";
+import { LightweightOutcomePredictor } from "../intelligence/outcome-predictor";
 
-  const controller = new TrialDeviceController(trial, "utilities");
+import { TrialDeviceController } from "./trial-device-controller";
 
-  const decision: BaselineDecision = {
-    system: "personalized",
-    selectedAction: "no_action",
-    score: 0,
-    estimatedEnergySaving: 0,
-    estimatedUXImpact: 0,
-    reason: "Control trial: no intervention.",
-  };
+const trial: ExperimentalTrial = {
+  trialId: "device-controller-test-001",
+  system: "personalized",
+  condition: "intervention",
+  appName: "Instagram",
+  startingBatteryLevel: 50,
+  targetDurationMinutes: 5,
+  status: "planned",
+  allocation: {
+    block: 1,
+    repetition: 1,
+    randomizedOrder: 1,
+  },
+};
 
-  const session = await controller.start(decision);
+const category: AppCategory = "social";
 
-  console.log("Trial started:", session);
+async function runTest() {
+  console.log("Starting TrialDeviceController test...");
+
+  const predictor = new LightweightOutcomePredictor();
+
+  const dataset = generateOutcomeDataset(2000);
+
+  predictor.train(dataset);
+
+  console.log("Predictor trained:", dataset.length, "examples");
+
+  const controller = new TrialDeviceController(trial, category);
+
+  const session = await controller.start(predictor);
+
+  console.log("Real-device experiment session:", session);
+
+  console.log("Selected policy decision:", controller.getDecision());
 
   controller.recordInteraction();
   controller.recordNetworkUsage();
+
+  await controller.recordDecision("accepted");
 
   const measurement = await controller.complete();
 
@@ -43,3 +53,5 @@ export async function testTrialDeviceController(): Promise<void> {
 
   console.log("Trial completed and experimental record persisted.");
 }
+
+void runTest();

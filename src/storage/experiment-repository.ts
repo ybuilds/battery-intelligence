@@ -48,12 +48,25 @@ export async function updateExperimentDecision(
   await db.runAsync(
     `
     UPDATE experiment_sessions
-    SET
-      user_decision = ?,
-      completed_at = ?
+    SET user_decision = ?
     WHERE session_id = ?
     `,
     decision,
+    sessionId,
+  );
+}
+
+export async function completeExperimentSession(
+  sessionId: string,
+): Promise<void> {
+  const db = await getDatabase();
+
+  await db.runAsync(
+    `
+    UPDATE experiment_sessions
+    SET completed_at = ?
+    WHERE session_id = ?
+    `,
     new Date().toISOString(),
     sessionId,
   );

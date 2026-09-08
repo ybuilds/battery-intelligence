@@ -3,10 +3,15 @@ import { SessionObserver } from "../device/session-observer";
 import { buildBehaviourObservation } from "../intelligence/observation-builder";
 
 import {
+  completeExperimentSession,
   createExperimentSession,
   recordOutcomeMeasurement,
   updateExperimentDecision,
 } from "../storage/experiment-repository";
+
+import { recordBehaviourObservation } from "../storage/behaviour-repository";
+
+import { recordPreferenceDecision } from "../storage/preference-repository";
 
 import type { BaselineSystem } from "../baselines/baseline-types";
 import type { BatteryState } from "../types/battery";
@@ -60,6 +65,7 @@ export class ExperimentController {
     const batteryBefore = await getCurrentBatteryState();
 
     const sessionId = generateSessionId();
+
     const startedAt = new Date().toISOString();
 
     this.observer.reset();
@@ -105,6 +111,20 @@ export class ExperimentController {
     };
 
     await updateExperimentDecision(this.session.sessionId, decision);
+
+    /*
+     * Accepted and rejected decisions provide
+     * explicit preference evidence.
+     *
+     * Ignored decisions are deliberately excluded
+     * because they do not establish a clear preference.
+     *
+     * no_action is also safely ignored by
+     * recordPreferenceDecision().
+     */
+    if (decision === "accepted" || decision === "rejected") {
+      await recordPreferenceDecision(this.session.selectedAction, decision);
+    }
   }
 
   public async complete(): Promise<InterventionMeasurementResult> {
@@ -118,6 +138,10 @@ export class ExperimentController {
 
     const interaction = this.observer.getState();
 
+    /*
+     * Build behaviour from the actual observed
+     * device session.
+     */
     const behaviourObservation = buildBehaviourObservation(
       this.session.batteryBefore,
       interaction,
@@ -127,6 +151,7 @@ export class ExperimentController {
 
     const behaviour: AppBehaviour = {
       appName: behaviourObservation.appName,
+
       category: behaviourObservation.category as AppCategory,
 
       sessionDurationMinutes: behaviourObservation.sessionDurationMinutes,
@@ -162,15 +187,39 @@ export class ExperimentController {
           ? 0
           : undefined;
 
+    /*
+     * Persist measured experimental outcome.
+     */
     await recordOutcomeMeasurement({
       sessionId: this.session.sessionId,
+
       batteryLevelBefore: this.session.batteryBefore.level,
+
       batteryLevelAfter: batteryAfter.level,
+
       energySaving,
+
       userAcceptance,
+
       measuredDurationMinutes,
+
       recordedAt: new Date().toISOString(),
     });
+
+    /*
+     * Persist actual behavioural observation.
+     *
+     * This observation contributes to the user's
+     * future BehaviourProfile.
+     */
+    await recordBehaviourObservation(behaviour);
+
+    /*
+     * Mark the experiment as genuinely completed
+     * only after the outcome and behaviour have
+     * successfully been persisted.
+     */
+    await completeExperimentSession(this.session.sessionId);
 
     this.session = {
       ...this.session,
@@ -179,14 +228,23 @@ export class ExperimentController {
 
     return {
       sessionId: this.session.sessionId,
+
       trialId: this.session.trialId,
+
       system: this.session.system,
+
       condition: this.session.condition,
+
       batteryBefore: this.session.batteryBefore.level,
+
       batteryAfter: batteryAfter.level,
+
       batteryDelta,
+
       measuredDurationMinutes,
+
       behaviour,
+
       userAcceptance,
     };
   }
