@@ -16,12 +16,12 @@ export async function getCurrentBatteryState(): Promise<BatteryState> {
     batteryState === Battery.BatteryState.FULL;
 
   /*
-   * iOS does not provide a universally reliable
-   * third-party API for exact remaining battery
-   * minutes.
+   * iOS does not expose a universally reliable
+   * exact remaining-minutes value to third-party
+   * applications.
    *
-   * We therefore leave this value as an estimate
-   * rather than presenting it as a measured value.
+   * This is only a temporary estimate and must
+   * not be used as measured research data.
    */
   const estimatedMinutesRemaining = Math.max(0, normalizedLevel * 3);
 

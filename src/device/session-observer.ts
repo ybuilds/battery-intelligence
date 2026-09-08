@@ -56,11 +56,8 @@ export class SessionObserver {
     this.sessionStartedAt = Date.now();
 
     this.interactionCount = 0;
-
     this.audioUsed = false;
-
     this.networkUsed = false;
-
     this.hapticsUsed = false;
   }
 }
