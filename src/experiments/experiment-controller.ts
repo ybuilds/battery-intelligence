@@ -20,6 +20,7 @@ import type { InterventionAction } from "../types/intervention";
 import type { UXMeasurement } from "../types/ux-measurement";
 
 import { generateSessionId } from "../utils/session-id";
+import { calculateUXComposite } from "./ux-measurement";
 
 export type ExperimentControllerState = {
   sessionId: string;
@@ -80,25 +81,14 @@ export class ExperimentController {
       throw new Error("An experiment session is already active.");
     }
 
-    /*
-     * Capture the actual battery level at the
-     * beginning of the experimental session.
-     */
     const batteryBefore = await getCurrentBatteryState();
 
     const sessionId = generateSessionId();
 
     const startedAt = new Date().toISOString();
 
-    /*
-     * Reset all observation counters before
-     * beginning a new trial.
-     */
     this.observer.reset();
 
-    /*
-     * Clear any previous UX measurement.
-     */
     this.uxMeasurement = undefined;
 
     this.session = {
@@ -112,14 +102,6 @@ export class ExperimentController {
       decision: "pending",
     };
 
-    /*
-     * Persist the experimental session before
-     * returning the session ID to the caller.
-     *
-     * This allows TrialDeviceController to associate
-     * subsequent intervention-execution events with
-     * this exact experimental session.
-     */
     await createExperimentSession({
       sessionId,
       trialId: this.trialId,
@@ -151,16 +133,6 @@ export class ExperimentController {
 
     await updateExperimentDecision(this.session.sessionId, decision);
 
-    /*
-     * Accepted and rejected decisions provide
-     * explicit preference evidence.
-     *
-     * Ignored decisions are deliberately excluded
-     * because they do not establish a clear preference.
-     *
-     * no_action is also safely ignored by
-     * recordPreferenceDecision().
-     */
     if (decision === "accepted" || decision === "rejected") {
       await recordPreferenceDecision(this.session.selectedAction, decision);
     }
@@ -174,31 +146,13 @@ export class ExperimentController {
     }
 
     /*
-     * Capture the battery level BEFORE any external
-     * intervention restoration is performed.
-     *
-     * This is important experimentally:
-     *
-     * intervention active
-     *       ↓
-     * battery measurement
-     *       ↓
-     * outcome recorded
-     *       ↓
-     * intervention restored
-     *
-     * Therefore batteryAfter represents the actual
-     * experimental condition rather than the restored
-     * device state.
+     * Measure battery while the experimental intervention
+     * is still active.
      */
     const batteryAfter = await getCurrentBatteryState();
 
     const interaction = this.observer.getState();
 
-    /*
-     * Build behaviour from the actual observed
-     * device session.
-     */
     const behaviourObservation = buildBehaviourObservation(
       this.session.batteryBefore,
       interaction,
@@ -236,13 +190,11 @@ export class ExperimentController {
     const batteryDelta = this.session.batteryBefore.level - batteryAfter.level;
 
     /*
-     * This value represents observed battery
-     * percentage change during the trial.
+     * This is the observed battery percentage change
+     * during the trial, not causal energy savings.
      *
-     * It should NOT be interpreted as causal
-     * energy saving. Treatment effects are
-     * calculated later through matched comparisons
-     * between experimental conditions.
+     * Treatment effects are calculated later using
+     * matched experimental comparisons.
      */
     const observedBatteryDrain = Math.max(0, batteryDelta);
 
@@ -254,8 +206,16 @@ export class ExperimentController {
           : undefined;
 
     /*
-     * Persist the measured experimental outcome.
+     * UX impact is only recorded when the participant
+     * completed the UX measurement.
+     *
+     * The composite uses the study-specific 1–5 UX
+     * instrument already defined in ux-measurement.ts.
      */
+    const uxImpact = this.uxMeasurement
+      ? calculateUXComposite(this.uxMeasurement)
+      : undefined;
+
     await recordOutcomeMeasurement({
       sessionId: this.session.sessionId,
 
@@ -265,6 +225,8 @@ export class ExperimentController {
 
       energySaving: observedBatteryDrain,
 
+      uxImpact,
+
       userAcceptance,
 
       measuredDurationMinutes,
@@ -273,17 +235,14 @@ export class ExperimentController {
     });
 
     /*
-     * Persist the actual behavioural observation.
-     *
-     * This observation contributes to future
-     * BehaviourProfile personalization.
+     * Persist the actual behavioural observation so
+     * that future trials can use it for personalization.
      */
     await recordBehaviourObservation(behaviour);
 
     /*
-     * Mark the experiment as genuinely completed
-     * only after the measured outcome and behaviour
-     * have successfully been persisted.
+     * Only mark the session completed after all
+     * measurements have been successfully persisted.
      */
     await completeExperimentSession(this.session.sessionId);
 
@@ -312,6 +271,8 @@ export class ExperimentController {
       behaviour,
 
       userAcceptance,
+
+      uxImpact,
     };
   }
 
@@ -356,4 +317,6 @@ export type InterventionMeasurementResult = {
   behaviour: AppBehaviour;
 
   userAcceptance: 0 | 1 | undefined;
+
+  uxImpact: number | undefined;
 };

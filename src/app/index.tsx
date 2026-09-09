@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -7,6 +8,7 @@ import { useBatteryIntelligence } from "../hooks/use-battery-intelligence";
 import { loadPreferences } from "../storage/preference-repository";
 import type { AppCategory } from "../types/behaviour";
 import type { InterventionAction } from "../types/intervention";
+
 const CURRENT_APP = "Instagram";
 const CURRENT_CATEGORY: AppCategory = "social";
 function formatInterventionAction(action: InterventionAction): string {
@@ -116,22 +118,17 @@ export default function HomeScreen() {
     };
   return (
     <SafeAreaView style={styles.safeArea}>
-      
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        
         {/* Header */}
         <View style={styles.header}>
-          
           <View>
-            
             <Text style={styles.eyebrow}> BATTERY INTELLIGENCE </Text>
             <Text style={styles.title}> Your device </Text>
           </View>
           <View style={styles.statusContainer}>
-            
             <View
               style={[
                 styles.statusDot,
@@ -145,26 +142,20 @@ export default function HomeScreen() {
               ]}
             />
             <Text style={styles.statusText}>
-              
               {error ? "Error" : isLoading ? "Analysing" : "Active"}
             </Text>
           </View>
         </View>
         {/* Battery Card */}
         <View style={styles.batteryCard}>
-          
           <View style={styles.batteryHeader}>
-            
             <View>
-              
               <Text style={styles.cardLabel}> BATTERY </Text>
               <Text style={styles.batteryValue}>
-                
                 {battery ? `${batteryLevel}%` : "--"}
               </Text>
             </View>
             <View style={styles.batteryIcon}>
-              
               {battery && (
                 <View
                   style={[
@@ -176,7 +167,6 @@ export default function HomeScreen() {
             </View>
           </View>
           <Text style={styles.batteryDescription}>
-            
             {battery
               ? battery.isCharging
                 ? "Device is charging. Battery-aware intelligence remains active."
@@ -188,61 +178,51 @@ export default function HomeScreen() {
         </View>
         {/* Current Behaviour */}
         <View style={styles.section}>
-          
           <Text style={styles.sectionTitle}> Current behaviour </Text>
           <View style={styles.behaviourCard}>
-            
             <View style={styles.appRow}>
-              
               <View style={styles.appIcon}>
-                
                 <Text style={styles.appIconText}> IG </Text>
               </View>
               <View style={styles.appInfo}>
-                
-                <Text style={styles.appName}>
-                  
-                  {behaviour.currentApp}
-                </Text>
-                <Text style={styles.appSubtext}>
-                  
-                  Current application
-                </Text>
+                <Text style={styles.appName}>{behaviour.currentApp}</Text>
+                <Text style={styles.appSubtext}>Current application</Text>
               </View>
               <View style={styles.activeBadge}>
-                
                 <Text style={styles.activeText}> ACTIVE </Text>
               </View>
             </View>
             <View style={styles.divider} />
             <View style={styles.statsRow}>
-              
               <Stat label="Session" value={behaviour.sessionDuration} />
               <Stat label="Intensity" value={behaviour.interactionIntensity} />
               <Stat label="Typical" value={behaviour.usualSession} />
             </View>
           </View>
         </View>
+
+        <View style={styles.section}>
+          <Pressable
+            onPress={() => {
+              console.log("Brightness test button pressed");
+              router.push("/brightness-test");
+            }}
+          >
+            <Text>Test Real Brightness Intervention</Text>
+          </Pressable>
+        </View>
+
         {/* Intelligence */}
         <View style={styles.section}>
-          
           <Text style={styles.sectionTitle}> Intelligence </Text>
           <View style={styles.intelligenceCard}>
-            
             <View style={styles.intelligenceHeader}>
-              
               <View style={styles.brainCircle}>
-                
                 <Text style={styles.brainText}> AI </Text>
               </View>
               <View style={styles.intelligenceInfo}>
-                
-                <Text style={styles.intelligenceTitle}>
-                  
-                  Personal model
-                </Text>
+                <Text style={styles.intelligenceTitle}>Personal model</Text>
                 <Text style={styles.intelligenceSubtext}>
-                  
                   {isLoading
                     ? "Analysing current context"
                     : "Learning your usage patterns"}
@@ -250,7 +230,6 @@ export default function HomeScreen() {
               </View>
             </View>
             <View style={styles.learningBar}>
-              
               <View
                 style={[
                   styles.learningProgress,
@@ -259,45 +238,33 @@ export default function HomeScreen() {
               />
             </View>
             <Text style={styles.learningText}>
-              
               Recommendation confidence:
               {recommendation
                 ? formatPercentage(recommendationConfidence)
                 : "Preparing"}
             </Text>
             <Text style={styles.feedbackText}>
-              
               {totalFeedback === 0
                 ? "No explicit user feedback recorded yet."
                 : `${totalFeedback} user decision${totalFeedback === 1 ? "" : "s"} learned.`}
             </Text>
             <View style={styles.profileInfo}>
-              
               <View>
-                
-                <Text style={styles.profileLabel}>
-                  
-                  Behaviour profile
-                </Text>
+                <Text style={styles.profileLabel}>Behaviour profile</Text>
                 <Text style={styles.profileSubtext}>
-                  
                   Historical personalization
                 </Text>
               </View>
               <Text style={styles.profileValue}>
-                
                 {formatPercentage(profileConfidence)}
               </Text>
             </View>
             {recommendation && (
               <View style={styles.runtimeStatus}>
-                
                 <Text style={styles.runtimeStatusTitle}>
-                  
                   Local intelligence active
                 </Text>
                 <Text style={styles.runtimeStatusText}>
-                  
                   Battery state, behavioural signals, user preferences and
                   predicted intervention outcomes are combined locally.
                 </Text>
@@ -307,77 +274,50 @@ export default function HomeScreen() {
         </View>
         {/* Recommended Intervention */}
         <View style={styles.section}>
-          
-          <Text style={styles.sectionTitle}>
-            
-            Recommended intervention
-          </Text>
+          <Text style={styles.sectionTitle}>Recommended intervention</Text>
           <View style={styles.interventionCard}>
-            
             {error ? (
               <View style={styles.recommendationHeader}>
-                
                 <View style={styles.recommendationIcon}>
-                  
                   <Text style={styles.recommendationIconText}> ! </Text>
                 </View>
                 <View style={styles.recommendationInfo}>
-                  
                   <Text style={styles.recommendationTitle}>
-                    
                     Intelligence unavailable
                   </Text>
-                  <Text style={styles.recommendationReason}>
-                    
-                    {error}
-                  </Text>
+                  <Text style={styles.recommendationReason}>{error}</Text>
                 </View>
               </View>
             ) : isLoading || !recommendation ? (
               <View style={styles.recommendationHeader}>
-                
                 <View style={styles.recommendationIcon}>
-                  
                   <Text style={styles.recommendationIconText}> ... </Text>
                 </View>
                 <View style={styles.recommendationInfo}>
-                  
                   <Text style={styles.recommendationTitle}>
-                    
                     Analysing current context
                   </Text>
                   <Text style={styles.recommendationReason}>
-                    
-                    Battery and behavioural signals are being analysed
-                    locally.
+                    Battery and behavioural signals are being analysed locally.
                   </Text>
                 </View>
               </View>
             ) : (
               <>
-                
                 <View style={styles.recommendationHeader}>
-                  
                   <View style={styles.recommendationIcon}>
-                    
                     <Text style={styles.recommendationIconText}> ⚡ </Text>
                   </View>
                   <View style={styles.recommendationInfo}>
-                    
                     <Text style={styles.recommendationTitle}>
-                      
-                      {formatInterventionAction(
-                        recommendation.selectedAction,
-                      )}
+                      {formatInterventionAction(recommendation.selectedAction)}
                     </Text>
                     <Text style={styles.recommendationReason}>
-                      
                       {recommendation.explanation}
                     </Text>
                   </View>
                 </View>
                 <View style={styles.impactRow}>
-                  
                   <Impact
                     label="Predicted saving"
                     value={
@@ -409,15 +349,12 @@ export default function HomeScreen() {
                 </View>
                 <View style={styles.divider} />
                 <View style={styles.controlBox}>
-                  
                   <Text style={styles.controlQuestion}>
-                    
                     The system recommends this action based on your current
                     battery and behavioural context. {"\n"} You remain in
                     control.
                   </Text>
                   <Text style={styles.executionModeText}>
-                    
                     {selectedCandidate?.executionMode === "execute"
                       ? "This intervention can be executed automatically."
                       : selectedCandidate?.executionMode === "recommend"
@@ -427,31 +364,23 @@ export default function HomeScreen() {
                 </View>
                 {recommendation.selectedAction !== "no_action" && !decision && (
                   <View style={styles.actionRow}>
-                    
                     <Pressable
                       style={styles.secondaryButton}
                       onPress={() => void handleUserDecision("rejected")}
                     >
-                      
-                      <Text style={styles.secondaryButtonText}>
-                        
-                        Reject
-                      </Text>
+                      <Text style={styles.secondaryButtonText}>Reject</Text>
                     </Pressable>
                     <Pressable
                       style={styles.primaryButton}
                       onPress={() => void handleUserDecision("accepted")}
                     >
-                      
                       <Text style={styles.primaryButtonText}> Allow </Text>
                     </Pressable>
                   </View>
                 )}
                 {decision && (
                   <View style={styles.decisionBox}>
-                    
                     <Text style={styles.decisionText}>
-                      
                       {decision === "accepted"
                         ? "Recommendation accepted. Your preference has been recorded locally."
                         : decision === "rejected"
@@ -466,13 +395,10 @@ export default function HomeScreen() {
         </View>
         {/* Research indicator */}
         <View style={styles.researchNote}>
-          
           <Text style={styles.researchTitle}>
-            
             PERSONALIZED ENERGY MANAGEMENT
           </Text>
           <Text style={styles.researchText}>
-            
             Battery state, application behaviour, historical user preferences
             and predicted intervention outcomes are combined to select a
             potentially energy-efficient and least disruptive intervention.
@@ -480,10 +406,8 @@ export default function HomeScreen() {
         </View>
         {/* Persistence status */}
         <View style={styles.persistenceNote}>
-          
           <View style={styles.persistenceIndicator} />
           <Text style={styles.persistenceText}>
-            
             {isLoadingPreferences
               ? "Loading persistent preferences..."
               : "Personalized preferences stored locally on device."}
@@ -493,10 +417,10 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.stat}>
-      
       <Text style={styles.statLabel}> {label} </Text>
       <Text style={styles.statValue}> {value} </Text>
     </View>
@@ -505,7 +429,6 @@ function Stat({ label, value }: { label: string; value: string }) {
 function Impact({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.impact}>
-      
       <Text style={styles.impactLabel}> {label} </Text>
       <Text style={styles.impactValue}> {value} </Text>
     </View>
