@@ -10,7 +10,6 @@ import {
 } from "../storage/experiment-repository";
 
 import { recordBehaviourObservation } from "../storage/behaviour-repository";
-
 import { recordPreferenceDecision } from "../storage/preference-repository";
 
 import type { BaselineSystem } from "../baselines/baseline-types";
@@ -18,6 +17,7 @@ import type { BatteryState } from "../types/battery";
 import type { AppBehaviour, AppCategory } from "../types/behaviour";
 import type { ExperimentCondition } from "../types/experiment";
 import type { InterventionAction } from "../types/intervention";
+import type { UXMeasurement } from "../types/ux-measurement";
 
 import { generateSessionId } from "../utils/session-id";
 
@@ -50,6 +50,8 @@ export class ExperimentController {
 
   private session: ExperimentControllerState | null = null;
 
+  private uxMeasurement: UXMeasurement | undefined;
+
   constructor(config: ExperimentControllerConfig) {
     this.trialId = config.trialId;
     this.system = config.system;
@@ -58,17 +60,46 @@ export class ExperimentController {
     this.observer = config.observer;
   }
 
+  public recordUXMeasurement(measurement: UXMeasurement): void {
+    if (!this.session) {
+      throw new Error("No active experiment session.");
+    }
+
+    this.uxMeasurement = measurement;
+  }
+
+  public getUXMeasurement(): UXMeasurement | undefined {
+    return this.uxMeasurement;
+  }
+
   public async start(
     selectedAction: InterventionAction,
     condition: ExperimentCondition = "intervention",
   ): Promise<ExperimentControllerState> {
+    if (this.session) {
+      throw new Error("An experiment session is already active.");
+    }
+
+    /*
+     * Capture the actual battery level at the
+     * beginning of the experimental session.
+     */
     const batteryBefore = await getCurrentBatteryState();
 
     const sessionId = generateSessionId();
 
     const startedAt = new Date().toISOString();
 
+    /*
+     * Reset all observation counters before
+     * beginning a new trial.
+     */
     this.observer.reset();
+
+    /*
+     * Clear any previous UX measurement.
+     */
+    this.uxMeasurement = undefined;
 
     this.session = {
       sessionId,
@@ -81,6 +112,14 @@ export class ExperimentController {
       decision: "pending",
     };
 
+    /*
+     * Persist the experimental session before
+     * returning the session ID to the caller.
+     *
+     * This allows TrialDeviceController to associate
+     * subsequent intervention-execution events with
+     * this exact experimental session.
+     */
     await createExperimentSession({
       sessionId,
       trialId: this.trialId,
@@ -134,6 +173,24 @@ export class ExperimentController {
       );
     }
 
+    /*
+     * Capture the battery level BEFORE any external
+     * intervention restoration is performed.
+     *
+     * This is important experimentally:
+     *
+     * intervention active
+     *       ↓
+     * battery measurement
+     *       ↓
+     * outcome recorded
+     *       ↓
+     * intervention restored
+     *
+     * Therefore batteryAfter represents the actual
+     * experimental condition rather than the restored
+     * device state.
+     */
     const batteryAfter = await getCurrentBatteryState();
 
     const interaction = this.observer.getState();
@@ -178,7 +235,16 @@ export class ExperimentController {
 
     const batteryDelta = this.session.batteryBefore.level - batteryAfter.level;
 
-    const energySaving = Math.max(0, batteryDelta);
+    /*
+     * This value represents observed battery
+     * percentage change during the trial.
+     *
+     * It should NOT be interpreted as causal
+     * energy saving. Treatment effects are
+     * calculated later through matched comparisons
+     * between experimental conditions.
+     */
+    const observedBatteryDrain = Math.max(0, batteryDelta);
 
     const userAcceptance =
       this.session.decision === "accepted"
@@ -188,7 +254,7 @@ export class ExperimentController {
           : undefined;
 
     /*
-     * Persist measured experimental outcome.
+     * Persist the measured experimental outcome.
      */
     await recordOutcomeMeasurement({
       sessionId: this.session.sessionId,
@@ -197,7 +263,7 @@ export class ExperimentController {
 
       batteryLevelAfter: batteryAfter.level,
 
-      energySaving,
+      energySaving: observedBatteryDrain,
 
       userAcceptance,
 
@@ -207,17 +273,17 @@ export class ExperimentController {
     });
 
     /*
-     * Persist actual behavioural observation.
+     * Persist the actual behavioural observation.
      *
-     * This observation contributes to the user's
-     * future BehaviourProfile.
+     * This observation contributes to future
+     * BehaviourProfile personalization.
      */
     await recordBehaviourObservation(behaviour);
 
     /*
      * Mark the experiment as genuinely completed
-     * only after the outcome and behaviour have
-     * successfully been persisted.
+     * only after the measured outcome and behaviour
+     * have successfully been persisted.
      */
     await completeExperimentSession(this.session.sessionId);
 
@@ -272,13 +338,22 @@ export class ExperimentController {
 
 export type InterventionMeasurementResult = {
   sessionId: string;
+
   trialId: string;
+
   system: BaselineSystem;
+
   condition: ExperimentCondition;
+
   batteryBefore: number;
+
   batteryAfter: number;
+
   batteryDelta: number;
+
   measuredDurationMinutes: number;
+
   behaviour: AppBehaviour;
+
   userAcceptance: 0 | 1 | undefined;
 };

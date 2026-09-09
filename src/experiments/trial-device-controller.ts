@@ -1,5 +1,6 @@
 import { getCurrentBatteryState } from "../device/battery-monitor";
 import { SessionObserver } from "../device/session-observer";
+
 import { ExperimentController } from "./experiment-controller";
 
 import type {
@@ -9,16 +10,29 @@ import type {
 
 import type { BaselineDecision } from "../baselines/baseline-types";
 import type { EvaluationScenario } from "../evaluation/evaluation-types";
+import type { LightweightOutcomePredictor } from "../intelligence/outcome-predictor";
 import type { AppCategory } from "../types/behaviour";
 import type { BehaviourProfile } from "../types/behaviour-profile";
 import type { UserEnergyPreferences } from "../types/preferences";
 import type { ExperimentalTrial } from "../types/trial";
-
-import type { LightweightOutcomePredictor } from "../intelligence/outcome-predictor";
+import type { UXMeasurement } from "../types/ux-measurement";
 
 import { getBehaviourProfile } from "../storage/behaviour-profile-repository";
 import { loadPreferences } from "../storage/preference-repository";
+
 import { createTrialDecision } from "./trial-policy-decision";
+
+import {
+  executeIntervention,
+  restoreIntervention,
+} from "../device/intervention-executor";
+
+import type { InterventionExecution } from "../types/intervention-execution";
+
+import {
+  markInterventionRestored,
+  recordInterventionExecution,
+} from "../storage/intervention-execution-repository";
 
 export class TrialDeviceController {
   private readonly trial: ExperimentalTrial;
@@ -27,8 +41,12 @@ export class TrialDeviceController {
   private readonly controller: ExperimentController;
 
   private latestDecision: BaselineDecision | null = null;
+
   private latestProfile: BehaviourProfile | null = null;
+
   private latestPreferences: UserEnergyPreferences | null = null;
+
+  private interventionExecution: InterventionExecution | undefined;
 
   constructor(trial: ExperimentalTrial, category: AppCategory) {
     this.trial = trial;
@@ -58,31 +76,26 @@ export class TrialDeviceController {
     /*
      * Step 2:
      * Load the user's learned behaviour profile.
-     *
-     * This is the historical personalization signal
-     * used by B4.
      */
     const profile = await getBehaviourProfile(this.trial.appName);
 
     /*
      * Step 3:
-     * Load intervention preferences learned from
-     * previous user decisions.
+     * Load intervention preferences.
      */
     const preferences = await loadPreferences();
 
     this.latestProfile = profile;
+
     this.latestPreferences = preferences;
 
     /*
      * Step 4:
      * Construct the current observation.
-     *
-     * Current-session behaviour is intentionally kept
-     * separate from historical profile information.
      */
     const behaviour = {
       appName: this.trial.appName,
+
       category: this.category,
 
       sessionDurationMinutes: 0,
@@ -105,8 +118,8 @@ export class TrialDeviceController {
 
     /*
      * Step 5:
-     * Build the exact scenario presented to the
-     * experimental policy.
+     * Build the exact scenario presented to
+     * the experimental policy.
      */
     const scenario: EvaluationScenario = {
       scenarioId: `device-${this.trial.trialId}`,
@@ -125,19 +138,6 @@ export class TrialDeviceController {
     /*
      * Step 6:
      * Run the selected baseline policy.
-     *
-     * B1:
-     *   battery only
-     *
-     * B2:
-     *   battery + current behaviour
-     *
-     * B3:
-     *   battery + behaviour + prediction
-     *
-     * B4:
-     *   battery + behaviour + history
-     *   + preferences + prediction
      */
     const decision = createTrialDecision(this.trial, scenario, predictor);
 
@@ -145,7 +145,7 @@ export class TrialDeviceController {
 
     /*
      * Control trials always receive no_action,
-     * regardless of what the policy recommends.
+     * regardless of the policy recommendation.
      */
     const selectedAction =
       this.trial.condition === "control"
@@ -154,10 +154,38 @@ export class TrialDeviceController {
 
     /*
      * Step 7:
-     * Persist the experimental session through the
-     * existing ExperimentController.
+     * Create the experiment session FIRST.
+     *
+     * This gives us the actual sessionId that will
+     * be used to associate the intervention execution
+     * record with this experiment.
      */
-    return this.controller.start(selectedAction, this.trial.condition);
+    const session = await this.controller.start(
+      selectedAction,
+      this.trial.condition,
+    );
+
+    /*
+     * Step 8:
+     * Execute the selected intervention.
+     *
+     * Unsupported interventions will return a
+     * structured recommendation/observation result
+     * instead of attempting prohibited system control.
+     */
+    const execution = await executeIntervention(selectedAction);
+
+    this.interventionExecution = execution;
+
+    /*
+     * Store the execution against the exact
+     * experiment session.
+     */
+    await recordInterventionExecution(session.sessionId, execution);
+
+    console.log("Intervention execution:", execution);
+
+    return session;
   }
 
   public async recordDecision(
@@ -183,7 +211,29 @@ export class TrialDeviceController {
   }
 
   public async complete(): Promise<InterventionMeasurementResult> {
-    return this.controller.complete();
+    /*
+     * First complete the experiment measurement.
+     *
+     * ExperimentController.complete() measures the
+     * battery while the intervention is still active.
+     */
+    const measurement = await this.controller.complete();
+
+    /*
+     * Only after the experimental outcome has been
+     * captured do we restore the intervention.
+     */
+    if (this.interventionExecution) {
+      const restored = await restoreIntervention(this.interventionExecution);
+
+      this.interventionExecution = restored;
+
+      const session = this.controller.getSession();
+
+      await markInterventionRestored(session?.sessionId, restored.action);
+    }
+
+    return measurement;
   }
 
   public getSession(): ExperimentControllerState | null {
@@ -204,6 +254,18 @@ export class TrialDeviceController {
 
   public getPreferences(): UserEnergyPreferences | null {
     return this.latestPreferences;
+  }
+
+  public recordUXMeasurement(measurement: UXMeasurement): void {
+    this.controller.recordUXMeasurement(measurement);
+  }
+
+  public getUXMeasurement(): UXMeasurement | undefined {
+    return this.controller.getUXMeasurement();
+  }
+
+  public getInterventionExecution(): InterventionExecution | undefined {
+    return this.interventionExecution;
   }
 }
 

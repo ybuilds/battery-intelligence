@@ -1,66 +1,92 @@
 import type { InterventionAction } from "../types/intervention";
-import type { InterventionCapability } from "../types/intervention-capability";
-import { getInterventionCapability } from "../types/intervention-capability";
 
-export type InterventionExecutionResult = {
-  action: InterventionAction;
-  capability: InterventionCapability;
-  executed: boolean;
-  executionMode: "execute" | "recommend" | "observe" | "unavailable";
-  message: string;
-};
+import type { InterventionExecution } from "../types/intervention-execution";
+
+import { IOS_INTERVENTION_CAPABILITIES } from "../types/intervention-capability";
+
+import { reduceBrightness, restoreBrightness } from "./brightness-controller";
 
 export async function executeIntervention(
   action: InterventionAction,
-): Promise<InterventionExecutionResult> {
-  const capability = getInterventionCapability(action);
+): Promise<InterventionExecution> {
+  const capability = IOS_INTERVENTION_CAPABILITIES[action];
 
-  if (action === "no_action") {
+  const executedAt = new Date().toISOString();
+
+  if (capability.executionMode !== "execute") {
     return {
       action,
-      capability,
+      executionMode: capability.executionMode,
+      attempted: false,
       executed: false,
-      executionMode: "observe",
-      message: "No intervention was selected.",
+      executedAt,
+      restored: false,
     };
   }
 
-  if (capability.mode === "execute") {
+  try {
+    if (action === "reduce_brightness") {
+      const result = await reduceBrightness(0.2);
+
+      return {
+        action,
+        executionMode: "execute",
+        attempted: true,
+        executed: true,
+        beforeValue: result.before,
+        afterValue: result.after,
+        executionParameter: result.reductionFraction,
+        executedAt,
+        restored: false,
+      };
+    }
+
     return {
       action,
-      capability,
-      executed: true,
-      executionMode: "execute",
-      message: "The intervention was executed by the application.",
+      executionMode: capability.executionMode,
+      attempted: true,
+      executed: false,
+      executedAt,
+      restored: false,
+      errorMessage:
+        "No executable implementation is registered for this action.",
+    };
+  } catch (error) {
+    return {
+      action,
+      executionMode: capability.executionMode,
+      attempted: true,
+      executed: false,
+      executedAt,
+      restored: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
     };
   }
+}
 
-  if (capability.mode === "recommend") {
-    return {
-      action,
-      capability,
-      executed: false,
-      executionMode: "recommend",
-      message:
-        "The intervention is recommended to the user and requires explicit user control.",
-    };
+export async function restoreIntervention(
+  execution: InterventionExecution,
+): Promise<InterventionExecution> {
+  if (!execution.executed) {
+    return execution;
   }
 
-  if (capability.mode === "observe") {
+  if (
+    execution.action === "reduce_brightness" &&
+    execution.beforeValue !== undefined
+  ) {
+    await restoreBrightness(execution.beforeValue);
+
     return {
-      action,
-      capability,
-      executed: false,
-      executionMode: "observe",
-      message: "The action is being observed without applying an intervention.",
+      ...execution,
+      restored: true,
+      restoredAt: new Date().toISOString(),
     };
   }
 
   return {
-    action,
-    capability,
-    executed: false,
-    executionMode: "unavailable",
-    message: "This intervention is not currently available on the device.",
+    ...execution,
+    restored: true,
+    restoredAt: new Date().toISOString(),
   };
 }

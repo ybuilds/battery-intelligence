@@ -2,23 +2,23 @@ import type { BaselineSystem } from "../baselines/baseline-types";
 import type { ExperimentalRecord } from "./experimental-record";
 
 import {
-    runPairedBatteryDrainTest,
-    type PairedTestResult,
+  runPairedBatteryDrainTest,
+  type PairedTestResult,
 } from "./paired-hypothesis-testing";
 
 import {
-    analyzePersonalizationBenefit,
-    type PersonalizationAnalysisResult,
+  analyzePersonalizationBenefit,
+  type PersonalizationAnalysisResult,
 } from "./personalization-analysis";
 
 import {
-    analyzeUXHypothesis,
-    type UXHypothesisResult,
+  analyzeUXHypothesis,
+  type UXHypothesisResult,
 } from "./ux-hypothesis-testing";
 
 import {
-    analyzeAcceptance,
-    type AcceptanceAnalysisResult,
+  analyzeAcceptance,
+  type AcceptanceAnalysisResult,
 } from "./acceptance-analysis";
 
 export type HypothesisDecision = "supported" | "not_supported" | "inconclusive";
@@ -75,16 +75,8 @@ export type FinalHypothesisEvaluation = {
 
 const ORIGINAL_ALPHA = 0.05;
 
-/*
- * We currently evaluate four research hypotheses.
- *
- * Bonferroni correction:
- *
- * adjusted alpha = alpha / number of tests
- *
- * This is intentionally conservative and easy
- * to explain in a research paper.
- */
+const NUMBER_OF_TESTS = 4;
+
 function calculateBonferroniAlpha(
   alpha: number,
   numberOfTests: number,
@@ -143,30 +135,29 @@ function evaluateH1(
 
     summary:
       decision === "supported"
-        ? "Personalized intervention shows a statistically significant reduction in measured battery drain rate."
+        ? "Personalized intervention shows a statistically significant reduction in measured battery drain rate compared with its matched control condition."
         : decision === "not_supported"
-          ? "The observed result does not support the claimed reduction in battery drain rate."
+          ? "The personalized intervention comparison does not support the claimed battery-drain reduction."
           : "The available evidence is insufficient to establish the claimed battery-efficiency improvement.",
   };
 }
 
 function evaluateH2(
   result: PersonalizationAnalysisResult,
-  adjustedAlpha: number,
-  records: ExperimentalRecord[],
 ): HypothesisEvaluation {
-  const pairedTest = runPairedBatteryDrainTest(
-    records,
-    "personalized",
-    adjustedAlpha,
-  );
-
-  const significant =
-    pairedTest.pValue !== undefined
-      ? pairedTest.pValue < adjustedAlpha
-      : undefined;
-
+  /*
+   * H2 is specifically:
+   *
+   * B4 Personalized intervention
+   * versus
+   * B3 Behaviour-Aware intervention.
+   *
+   * This is deliberately NOT a personalized
+   * control-vs-intervention comparison.
+   */
   const favourable = result.meanDrainRateDifference < 0;
+
+  const significant = result.statisticalSignificance;
 
   let decision: HypothesisDecision;
 
@@ -197,32 +188,20 @@ function evaluateH2(
 
     statisticallySignificant: significant,
 
-    pValue: pairedTest.pValue,
+    pValue: result.pValue,
 
     effectSize: result.cohensDz,
 
     summary:
       decision === "supported"
-        ? "Personalized Intelligence demonstrates a statistically significant battery-drain reduction compared with the Behaviour-Aware baseline."
+        ? "Personalized Intelligence produces a statistically significant reduction in measured battery drain rate compared with the Behaviour-Aware baseline."
         : decision === "not_supported"
-          ? "The personalization comparison does not support an improvement over the Behaviour-Aware baseline."
-          : "The available evidence is insufficient to establish a statistically significant personalization benefit.",
+          ? "The matched B3/B4 comparison does not support a personalization-related battery-efficiency improvement."
+          : "The available matched B3/B4 evidence is insufficient to establish a statistically significant personalization benefit.",
   };
 }
 
-function evaluateH3(
-  result: UXHypothesisResult,
-  adjustedAlpha: number,
-): HypothesisEvaluation {
-  /*
-   * UX analysis currently provides the
-   * matched effect and confidence interval.
-   *
-   * Until a dedicated validated paired
-   * UX test is introduced, the final evaluator
-   * treats this as an evidence-direction result.
-   */
-
+function evaluateH3(result: UXHypothesisResult): HypothesisEvaluation {
   const favourable = result.meanDifference < 0;
 
   const statisticallySignificant = result.confidenceIntervalUpper < 0;
@@ -254,13 +233,13 @@ function evaluateH3(
         ? "unfavourable"
         : "neutral",
 
-    statisticallySignificant: statisticallySignificant,
+    statisticallySignificant,
 
     effectSize: result.cohensDz,
 
     summary:
       decision === "supported"
-        ? "Personalized intervention shows evidence of lower UX impact."
+        ? "Personalized intervention shows evidence of lower UX impact than the Behaviour-Aware baseline."
         : decision === "not_supported"
           ? "The observed UX result does not support reduced UX impact."
           : "The available UX evidence is inconclusive.",
@@ -271,14 +250,11 @@ function evaluateH4(result: AcceptanceAnalysisResult): HypothesisEvaluation {
   const favourable = result.acceptanceDifference > 0;
 
   /*
-   * User acceptance is binary and the current
-   * analysis layer does not yet implement a
-   * dedicated paired binary statistical test.
-   *
-   * Therefore H4 is intentionally classified
-   * from observed direction only.
+   * H4 remains descriptive for now because
+   * the current acceptance layer does not
+   * implement a validated paired binary
+   * inferential test.
    */
-
   return {
     hypothesisId: "H4",
 
@@ -343,14 +319,16 @@ function buildOverallConclusion(evaluations: HypothesisEvaluation[]): string {
 export function evaluateResearchHypotheses(
   records: ExperimentalRecord[],
 ): FinalHypothesisEvaluation {
-  const numberOfTests = 4;
-
-  const adjustedAlpha = calculateBonferroniAlpha(ORIGINAL_ALPHA, numberOfTests);
+  const adjustedAlpha = calculateBonferroniAlpha(
+    ORIGINAL_ALPHA,
+    NUMBER_OF_TESTS,
+  );
 
   /*
-   * H1:
-   * Personalized intervention vs matched
-   * control.
+   * H1
+   *
+   * Personalized intervention
+   * versus personalized control.
    */
   const h1Result = runPairedBatteryDrainTest(
     records,
@@ -359,29 +337,37 @@ export function evaluateResearchHypotheses(
   );
 
   /*
-   * H2:
-   * B4 Personalized vs B3 Behaviour-Aware.
+   * H2
+   *
+   * B4 Personalized intervention
+   * versus
+   * B3 Behaviour-Aware intervention.
+   *
+   * This comparison is performed by
+   * analyzePersonalizationBenefit().
    */
-  const h2Result = analyzePersonalizationBenefit(records);
+  const h2Result = analyzePersonalizationBenefit(records, adjustedAlpha);
 
   /*
-   * H3:
-   * Personalized vs Behaviour-Aware UX.
+   * H3
+   *
+   * Personalized versus Behaviour-Aware UX.
    */
   const h3Result = analyzeUXHypothesis(records);
 
   /*
-   * H4:
-   * Personalized vs Behaviour-Aware
+   * H4
+   *
+   * Personalized versus Behaviour-Aware
    * acceptance.
    */
   const h4Result = analyzeAcceptance(records);
 
   const h1 = evaluateH1(h1Result, adjustedAlpha);
 
-  const h2 = evaluateH2(h2Result, adjustedAlpha, records);
+  const h2 = evaluateH2(h2Result);
 
-  const h3 = evaluateH3(h3Result, adjustedAlpha);
+  const h3 = evaluateH3(h3Result);
 
   const h4 = evaluateH4(h4Result);
 
@@ -395,7 +381,7 @@ export function evaluateResearchHypotheses(
     adjustment: {
       method: "bonferroni",
 
-      numberOfTests,
+      numberOfTests: NUMBER_OF_TESTS,
 
       originalAlpha: ORIGINAL_ALPHA,
 
@@ -403,8 +389,11 @@ export function evaluateResearchHypotheses(
     },
 
     h1,
+
     h2,
+
     h3,
+
     h4,
 
     overallConclusion: buildOverallConclusion(evaluations),

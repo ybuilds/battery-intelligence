@@ -95,6 +95,52 @@ export async function getDatabase() {
       )
       REFERENCES experiment_sessions(session_id)
     );
+
+    CREATE TABLE IF NOT EXISTS experiment_campaigns (
+      campaign_id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      systems TEXT NOT NULL,
+      total_trials INTEGER NOT NULL,
+      completed_trials INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      started_at TEXT,
+      completed_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS campaign_trials (
+      trial_id TEXT PRIMARY KEY NOT NULL,
+      campaign_id TEXT NOT NULL,
+      system TEXT NOT NULL,
+      condition TEXT NOT NULL,
+      app_name TEXT NOT NULL,
+      starting_battery_level REAL NOT NULL,
+      target_duration_minutes REAL NOT NULL,
+      status TEXT NOT NULL,
+      block INTEGER NOT NULL,
+      repetition INTEGER NOT NULL,
+      randomized_order INTEGER NOT NULL,
+      started_at TEXT,
+      completed_at TEXT,
+      FOREIGN KEY (campaign_id)
+        REFERENCES experiment_campaigns(campaign_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS intervention_executions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT,
+      intervention_action TEXT NOT NULL,
+      execution_mode TEXT NOT NULL,
+      attempted INTEGER NOT NULL DEFAULT 0,
+      executed INTEGER NOT NULL DEFAULT 0,
+      before_value REAL,
+      after_value REAL,
+      execution_parameter REAL,
+      error_message TEXT,
+      executed_at TEXT NOT NULL,
+      restored INTEGER NOT NULL DEFAULT 0,
+      restored_at TEXT
+    );
   `);
 
   return db;

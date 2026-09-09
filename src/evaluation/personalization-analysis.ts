@@ -42,7 +42,13 @@ export type PersonalizationAnalysisResult = {
 
   cohensDz: number;
 
+  zStatistic: number;
+
+  pValue: number | undefined;
+
   directionSupportsH2: boolean;
+
+  statisticalSignificance: boolean | undefined;
 
   interpretation: string;
 
@@ -70,6 +76,46 @@ function sampleStandardDeviation(values: number[]): number {
   );
 
   return Math.sqrt(squaredDifferences / (values.length - 1));
+}
+
+/*
+ * Standard normal cumulative distribution
+ * function using an approximation to erf().
+ *
+ * This is sufficient for the current
+ * lightweight evaluation layer. Final
+ * publication analysis should preferably
+ * be reproduced with a validated statistical
+ * package such as R or Python.
+ */
+function normalCdf(value: number): number {
+  const sign = value < 0 ? -1 : 1;
+
+  const absoluteValue = Math.abs(value) / Math.sqrt(2);
+
+  const t = 1 / (1 + 0.3275911 * absoluteValue);
+
+  const coefficients = [
+    1.061405429, -1.453152027, 1.421413741, -0.284496736, 0.254829592,
+  ];
+
+  let polynomial = coefficients[4];
+
+  for (let index = 3; index >= 0; index -= 1) {
+    polynomial = polynomial * t + coefficients[index];
+  }
+
+  const erf = 1 - polynomial * t * Math.exp(-absoluteValue * absoluteValue);
+
+  const signedErf = sign * erf;
+
+  return 0.5 * (1 + signedErf);
+}
+
+function calculateTwoSidedNormalPValue(zStatistic: number): number {
+  const cdf = normalCdf(Math.abs(zStatistic));
+
+  return 2 * (1 - cdf);
 }
 
 function buildComparisonGroups(
@@ -116,6 +162,16 @@ export function buildPersonalizationComparisons(
       continue;
     }
 
+    /*
+     * Difference is defined as:
+     *
+     * B4 - B3
+     *
+     * Therefore:
+     *
+     * negative = B4 drains less
+     * positive = B4 drains more
+     */
     const drainRateDifference =
       personalized.batteryDrainRate - behaviourAware.batteryDrainRate;
 
@@ -148,6 +204,7 @@ export function buildPersonalizationComparisons(
 
 export function analyzePersonalizationBenefit(
   records: ExperimentalRecord[],
+  alpha = 0.0125,
 ): PersonalizationAnalysisResult {
   const comparisons = buildPersonalizationComparisons(records);
 
@@ -180,7 +237,7 @@ export function analyzePersonalizationBenefit(
   const standardDeviationOfDifference = sampleStandardDeviation(differences);
 
   const standardError =
-    sampleSize > 0 ? standardDeviationOfDifference / Math.sqrt(sampleSize) : 0;
+    sampleSize > 1 ? standardDeviationOfDifference / Math.sqrt(sampleSize) : 0;
 
   const confidenceIntervalMargin = 1.96 * standardError;
 
@@ -195,20 +252,39 @@ export function analyzePersonalizationBenefit(
       ? meanDrainRateDifference / standardDeviationOfDifference
       : 0;
 
+  const zStatistic =
+    standardError > 0 ? meanDrainRateDifference / standardError : 0;
+
+  const pValue =
+    sampleSize > 1 && standardError > 0
+      ? calculateTwoSidedNormalPValue(zStatistic)
+      : undefined;
+
   const directionSupportsH2 = sampleSize > 0 && meanDrainRateDifference < 0;
+
+  const statisticalSignificance =
+    pValue !== undefined ? pValue < alpha : undefined;
 
   let interpretation =
     "Insufficient matched B3/B4 intervention trials for personalization analysis.";
 
-  if (sampleSize > 0) {
-    if (directionSupportsH2) {
+  if (sampleSize > 1) {
+    if (directionSupportsH2 && statisticalSignificance) {
       interpretation = `Personalized Intelligence produced a lower mean battery drain rate than the Behaviour-Aware baseline by ${Math.abs(
         meanDrainRateDifference,
       ).toFixed(
         4,
       )} percentage points per minute, corresponding to an average improvement of ${meanImprovementPercent.toFixed(
         2,
-      )}%. The observed direction supports H2, but statistical significance must be established with the final inferential test.`;
+      )}%. The matched B3/B4 comparison is statistically significant at the adjusted alpha level.`;
+    } else if (directionSupportsH2) {
+      interpretation = `Personalized Intelligence produced a lower mean battery drain rate than the Behaviour-Aware baseline by ${Math.abs(
+        meanDrainRateDifference,
+      ).toFixed(
+        4,
+      )} percentage points per minute, corresponding to an average improvement of ${meanImprovementPercent.toFixed(
+        2,
+      )}%. The observed direction supports H2, but the matched difference is not statistically significant at the adjusted alpha level.`;
     } else if (meanDrainRateDifference > 0) {
       interpretation = `Personalized Intelligence produced a higher mean battery drain rate than the Behaviour-Aware baseline by ${meanDrainRateDifference.toFixed(
         4,
@@ -244,7 +320,13 @@ export function analyzePersonalizationBenefit(
 
     cohensDz,
 
+    zStatistic,
+
+    pValue,
+
     directionSupportsH2,
+
+    statisticalSignificance,
 
     interpretation,
 

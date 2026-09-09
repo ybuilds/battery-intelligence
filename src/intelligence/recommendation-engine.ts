@@ -3,8 +3,8 @@ import type { AppBehaviour } from "../types/behaviour";
 import type { BehaviourProfile } from "../types/behaviour-profile";
 import type { UserEnergyPreferences } from "../types/preferences";
 import type {
-    Recommendation,
-    RecommendationCandidate,
+  Recommendation,
+  RecommendationCandidate,
 } from "../types/recommendation";
 
 import { getInterventionCapability } from "../types/intervention-capability";
@@ -69,7 +69,7 @@ export function generateRecommendation(
 
         ranking: index + 1,
 
-        executionMode: capability.mode,
+        executionMode: capability.executionMode,
 
         canExecuteAutomatically: capability.canExecuteAutomatically,
       };
